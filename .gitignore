@@ -1,0 +1,27 @@
+# Env & secrets
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+!.env.example
+
+# Node / Next
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+*.log
+.vercel/
+.DS_Store
+Thumbs.db
+
+# Supabase local
+supabase/.branches/
+supabase/.temp/
+
+# Migration backups (chứa dữ liệu — không commit)
+tools/backups/
+*.backup.json
