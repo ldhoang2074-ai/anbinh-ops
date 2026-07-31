@@ -29,7 +29,7 @@ export class AuthError extends Error {
  * Không tin bất cứ giá trị nào do client gửi (org/role...) — tất cả tra từ DB.
  */
 export async function requireAuth(): Promise<AuthContext> {
-  const supabase = createClient();
+  const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) throw new AuthError('NO_SESSION', 'Chưa đăng nhập');
 
