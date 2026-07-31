@@ -23,7 +23,7 @@ export interface CommandResult {
 export interface CommandDef<I> {
   name: string;
   permission: string;             // quyền bắt buộc
-  schema: z.ZodType<I>;           // validate input phía server
+  schema: z.ZodType<I, z.ZodTypeDef, any>;           // validate input phía server
   idempotent?: boolean;          // dùng idempotency_key nếu true
   run: (input: I, ctx: CommandCtx) => Promise<unknown>;
 }

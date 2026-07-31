@@ -1,7 +1,10 @@
 // middleware.ts — refresh session + chặn thô route /admin khi chưa có session.
 // Kiểm tra chi tiết (membership/permission) làm ở layout server + mỗi command.
 import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import {
+  createServerClient,
+  type CookieOptions,
+} from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -14,7 +17,13 @@ export async function middleware(request: NextRequest) {
         getAll() {
           return request.cookies.getAll();
         },
-        setAll(cookiesToSet) {
+        setAll(
+          cookiesToSet: Array<{
+            name: string;
+            value: string;
+            options: CookieOptions;
+          }>
+        ) {
           cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value);
             response.cookies.set(name, value, options);
@@ -24,11 +33,12 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
   const isAdmin = pathname.startsWith('/admin');
-  const isLogin = pathname.startsWith('/login') || pathname.startsWith('/auth');
 
   // Chưa đăng nhập mà vào /admin → về /login
   if (isAdmin && !user) {
@@ -38,13 +48,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Trang Admin không được cache (chống xem lại nội dung bằng nút Back sau khi logout)
+  // Trang Admin không được cache
+  // Chống xem lại nội dung bằng nút Back sau khi logout.
   if (isAdmin) {
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    response.headers.set(
+      'Cache-Control',
+      'no-store, no-cache, must-revalidate, max-age=0'
+    );
     response.headers.set('Pragma', 'no-cache');
   }
 
-  // Đã đăng nhập mà vào /login → để layout quyết định (có thể chưa được cấp quyền)
+  // Đã đăng nhập mà vào /login:
+  // layout sẽ kiểm tra membership và permission.
   return response;
 }
 
