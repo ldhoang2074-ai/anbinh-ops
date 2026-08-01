@@ -2,7 +2,12 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { OrderRepository } from '@/lib/repositories';
+import {
+  DispatchRepository,
+  DriverRepository,
+  OrderRepository,
+  VehicleRepository,
+} from '@/lib/repositories';
 
 type CustomerSummary = {
   id: string;
@@ -20,6 +25,23 @@ type DriverSummary = {
   id: string;
   name: string;
   phone: string | null;
+};
+
+type DispatchVehicle = {
+  id: string;
+  plate: string;
+  model: string | null;
+  status: string;
+  registration_expiry: string | null;
+  insurance_expiry: string | null;
+};
+
+type DispatchDriver = {
+  id: string;
+  name: string;
+  phone: string | null;
+  status: string;
+  license_expiry: string | null;
 };
 
 type Relation<T> = T | T[] | null;
@@ -89,10 +111,25 @@ function customerFallback(order: OrderDetail): string {
     : 'Chưa liên kết khách hàng';
 }
 
-export default function OrderDetailClient({ orderId }: { orderId: string }) {
+export default function OrderDetailClient({
+  orderId,
+  canAssign,
+}: {
+  orderId: string;
+  canAssign: boolean;
+}) {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [vehicles, setVehicles] = useState<DispatchVehicle[]>([]);
+  const [drivers, setDrivers] = useState<DispatchDriver[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [optionsError, setOptionsError] = useState('');
+  const [selectedVehicleId, setSelectedVehicleId] = useState('');
+  const [selectedDriverId, setSelectedDriverId] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [dispatchError, setDispatchError] = useState('');
+  const [dispatchSuccess, setDispatchSuccess] = useState('');
 
   const loadOrder = useCallback(async () => {
     setLoading(true);
@@ -115,6 +152,56 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   useEffect(() => {
     void loadOrder();
   }, [loadOrder]);
+
+  const loadDispatchOptions = useCallback(async () => {
+    setOptionsLoading(true);
+    setOptionsError('');
+
+    try {
+      const [vehicleData, driverData] = await Promise.all([
+        VehicleRepository.listDispatchable(),
+        DriverRepository.listDispatchable(),
+      ]);
+      setVehicles(vehicleData as DispatchVehicle[]);
+      setDrivers(driverData as DispatchDriver[]);
+    } catch {
+      setOptionsError('Không thể tải danh sách xe hoặc tài xế phù hợp.');
+    } finally {
+      setOptionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (canAssign && order?.status === 'WAITING_ASSIGNMENT') {
+      void loadDispatchOptions();
+    }
+  }, [canAssign, loadDispatchOptions, order?.status]);
+
+  async function submitDispatch() {
+    if (!order || order.status !== 'WAITING_ASSIGNMENT') return;
+
+    setSubmitting(true);
+    setDispatchError('');
+    setDispatchSuccess('');
+
+    try {
+      await DispatchRepository.assign(
+        order.id,
+        selectedVehicleId,
+        selectedDriverId,
+      );
+      setDispatchSuccess('Đã điều phối xe và tài xế thành công.');
+      await loadOrder();
+    } catch (submitError) {
+      setDispatchError(
+        submitError instanceof Error
+          ? submitError.message
+          : 'Không thể điều phối xe và tài xế.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   if (loading) {
     return <div className="ab-empty">Đang tải chi tiết đơn hàng…</div>;
@@ -323,6 +410,102 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
                         : 'Chưa gán'}
                   </span>
                 </div>
+              </>
+            )}
+          </section>
+
+          <section className="ab-card">
+            <h3>Điều phối xe và tài xế</h3>
+
+            {dispatchSuccess && (
+              <div className="ab-alert" style={{ marginBottom: 14 }}>
+                {dispatchSuccess}
+              </div>
+            )}
+
+            {order.status !== 'WAITING_ASSIGNMENT' ? (
+              <div className="ab-sub">
+                Trạng thái hiện tại: {statusLabels[order.status] ?? order.status}.
+                Không thể tạo điều phối mới cho đơn này.
+              </div>
+            ) : !canAssign ? (
+              <div className="ab-sub">
+                Bạn không có quyền điều phối xe và tài xế cho đơn này.
+              </div>
+            ) : (
+              <>
+                <div className="ab-kv" style={{ marginBottom: 14 }}>
+                  <b>Thời gian chuyến</b>
+                  <span>
+                    {dateTime(order.start_time)} → {dateTime(order.end_time)}
+                  </span>
+                </div>
+
+                {(optionsError || dispatchError) && (
+                  <div className="ab-alert danger">
+                    {dispatchError || optionsError}
+                  </div>
+                )}
+
+                {optionsLoading ? (
+                  <div className="ab-sub">Đang tải xe và tài xế phù hợp…</div>
+                ) : (
+                  <>
+                    <div className="ab-field">
+                      <label htmlFor="dispatch-vehicle">Xe</label>
+                      <select
+                        id="dispatch-vehicle"
+                        value={selectedVehicleId}
+                        onChange={(event) => setSelectedVehicleId(event.target.value)}
+                        disabled={submitting || Boolean(optionsError)}
+                      >
+                        <option value="">Chọn xe</option>
+                        {vehicles.map((vehicle) => (
+                          <option key={vehicle.id} value={vehicle.id}>
+                            {vehicle.plate}{vehicle.model ? ` — ${vehicle.model}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="ab-field">
+                      <label htmlFor="dispatch-driver">Tài xế</label>
+                      <select
+                        id="dispatch-driver"
+                        value={selectedDriverId}
+                        onChange={(event) => setSelectedDriverId(event.target.value)}
+                        disabled={submitting || Boolean(optionsError)}
+                      >
+                        <option value="">Chọn tài xế</option>
+                        {drivers.map((driver) => (
+                          <option key={driver.id} value={driver.id}>
+                            {driver.name}{driver.phone ? ` — ${driver.phone}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {!optionsError && (!vehicles.length || !drivers.length) && (
+                      <div className="ab-sub" style={{ marginBottom: 14 }}>
+                        Chưa có xe hoặc tài xế phù hợp để điều phối.
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="ab-btn primary"
+                      onClick={submitDispatch}
+                      disabled={
+                        !selectedVehicleId ||
+                        !selectedDriverId ||
+                        submitting ||
+                        Boolean(optionsError)
+                      }
+                    >
+                      {submitting ? 'Đang điều phối…' : 'Xác nhận điều phối'}
+                    </button>
+                  </>
+                )}
               </>
             )}
           </section>
