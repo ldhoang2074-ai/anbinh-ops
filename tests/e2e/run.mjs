@@ -119,8 +119,13 @@ const state = {
   customerId: null,
   vehicleId: null,
   driverId: null,
+  alternateVehicleId: null,
+  alternateDriverId: null,
+  softDeletedVehicleId: null,
+  softDeletedDriverId: null,
   orderOneId: null,
   orderTwoId: null,
+  softDeletedOrderId: null,
 };
 
 let pass = 0;
@@ -418,6 +423,84 @@ async function setup() {
 
   state.driverId = driver.id;
 
+  const { data: extraVehicles } = await expectOk(
+    admin
+      .from('vehicles')
+      .insert([
+        {
+          organization_id: state.organizationId,
+          plate: `E2E-ALT-${testTag}`,
+          model: 'E2E Alternate Vehicle',
+          status: 'AVAILABLE',
+          registration_expiry: '2036-12-31',
+          insurance_expiry: '2036-12-31',
+          created_by: state.users.dispatcher.id,
+          updated_by: state.users.dispatcher.id,
+        },
+        {
+          organization_id: state.organizationId,
+          plate: `E2E-DELETED-${testTag}`,
+          model: 'E2E Soft Deleted Vehicle',
+          status: 'AVAILABLE',
+          registration_expiry: '2036-12-31',
+          insurance_expiry: '2036-12-31',
+          deleted_at: new Date().toISOString(),
+          created_by: state.users.dispatcher.id,
+          updated_by: state.users.dispatcher.id,
+        },
+      ])
+      .select('id, plate'),
+    'Tạo xe bổ sung'
+  );
+
+  state.alternateVehicleId = extraVehicles.find(
+    (vehicleRow) => vehicleRow.plate === `E2E-ALT-${testTag}`
+  )?.id;
+  state.softDeletedVehicleId = extraVehicles.find(
+    (vehicleRow) => vehicleRow.plate === `E2E-DELETED-${testTag}`
+  )?.id;
+
+  const { data: extraDrivers } = await expectOk(
+    admin
+      .from('drivers')
+      .insert([
+        {
+          organization_id: state.organizationId,
+          name: 'E2E Alternate Driver',
+          status: 'AVAILABLE',
+          license_expiry: '2036-12-31',
+          created_by: state.users.dispatcher.id,
+          updated_by: state.users.dispatcher.id,
+        },
+        {
+          organization_id: state.organizationId,
+          name: 'E2E Soft Deleted Driver',
+          status: 'AVAILABLE',
+          license_expiry: '2036-12-31',
+          deleted_at: new Date().toISOString(),
+          created_by: state.users.dispatcher.id,
+          updated_by: state.users.dispatcher.id,
+        },
+      ])
+      .select('id, name'),
+    'Tạo tài xế bổ sung'
+  );
+
+  state.alternateDriverId = extraDrivers.find(
+    (driverRow) => driverRow.name === 'E2E Alternate Driver'
+  )?.id;
+  state.softDeletedDriverId = extraDrivers.find(
+    (driverRow) => driverRow.name === 'E2E Soft Deleted Driver'
+  )?.id;
+
+  assert.ok(
+    state.alternateVehicleId &&
+      state.softDeletedVehicleId &&
+      state.alternateDriverId &&
+      state.softDeletedDriverId,
+    'Không tạo đủ xe và tài xế bổ sung'
+  );
+
   const { data: orders } = await expectOk(
     admin
       .from('orders')
@@ -450,6 +533,21 @@ async function setup() {
           updated_by:
             state.users.dispatcher.id,
         },
+        {
+          organization_id:
+            state.organizationId,
+          order_code:
+            `E2E-DELETED-${testTag}`,
+          service_type:
+            `E2E_ORDER_DELETED_${testTag}`,
+          start_time: tripOne.start,
+          end_time: tripOne.end,
+          deleted_at: new Date().toISOString(),
+          created_by:
+            state.users.dispatcher.id,
+          updated_by:
+            state.users.dispatcher.id,
+        },
       ])
       .select('id, order_code'),
     'Tạo hai orders'
@@ -468,11 +566,18 @@ async function setup() {
         order.order_code ===
         `E2E-TWO-${testTag}`
     )?.id;
+  state.softDeletedOrderId =
+    orders.find(
+      (order) =>
+        order.order_code ===
+        `E2E-DELETED-${testTag}`
+    )?.id;
 
   assert.ok(
     state.orderOneId &&
-    state.orderTwoId,
-    'Không tạo đủ hai orders'
+    state.orderTwoId &&
+    state.softDeletedOrderId,
+    'Không tạo đủ orders kiểm thử'
   );
 
   state.cookies.sales =
@@ -703,6 +808,53 @@ async function runTests() {
   );
 
   await test(
+    'Dispatcher không thể gán Order đã soft-delete',
+    async () => {
+      const result = await command(
+        'assign_vehicle_driver',
+        {
+          orderId: state.softDeletedOrderId,
+          vehicleId: state.vehicleId,
+          driverId: state.driverId,
+        },
+        state.cookies.dispatcher
+      );
+
+      assert.equal(result.status, 400);
+      assert.equal(result.json.ok, false);
+    }
+  );
+
+  await test(
+    'Dispatcher không thể gán xe hoặc tài xế đã soft-delete',
+    async () => {
+      const vehicleResult = await command(
+        'assign_vehicle_driver',
+        {
+          orderId: state.orderTwoId,
+          vehicleId: state.softDeletedVehicleId,
+          driverId: state.driverId,
+        },
+        state.cookies.dispatcher
+      );
+      const driverResult = await command(
+        'assign_vehicle_driver',
+        {
+          orderId: state.orderTwoId,
+          vehicleId: state.vehicleId,
+          driverId: state.softDeletedDriverId,
+        },
+        state.cookies.dispatcher
+      );
+
+      assert.equal(vehicleResult.status, 400);
+      assert.equal(vehicleResult.json.ok, false);
+      assert.equal(driverResult.status, 400);
+      assert.equal(driverResult.json.ok, false);
+    }
+  );
+
+  await test(
     'Dispatcher điều phối thành công và ghi đủ dữ liệu',
     async () => {
       const result = await command(
@@ -886,6 +1038,40 @@ async function runTests() {
 
       assert.equal(order.vehicle_id, null);
       assert.equal(order.driver_id, null);
+    }
+  );
+
+  await test(
+    'Database chặn assignment ACTIVE thứ hai cho cùng một Order',
+    async () => {
+      const { error } = await admin
+        .from('assignments')
+        .insert({
+          organization_id: state.organizationId,
+          order_id: state.orderOneId,
+          vehicle_id: state.alternateVehicleId,
+          driver_id: state.alternateDriverId,
+          start_time: tripOne.start,
+          end_time: tripOne.end,
+          status: 'ACTIVE',
+          created_by: state.users.dispatcher.id,
+          updated_by: state.users.dispatcher.id,
+        });
+
+      assert.ok(error, 'Database đã cho phép assignment ACTIVE thứ hai');
+      assert.equal(error.code, '23505');
+
+      const { count } = await expectOk(
+        admin
+          .from('assignments')
+          .select('id', { count: 'exact', head: true })
+          .eq('order_id', state.orderOneId)
+          .eq('status', 'ACTIVE')
+          .is('deleted_at', null),
+        'Đếm assignment ACTIVE của Order'
+      );
+
+      assert.equal(count, 1);
     }
   );
 }
