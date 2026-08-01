@@ -12,7 +12,6 @@ function LoginInner() {
   const params = useSearchParams();
 
   const err = params.get('error');
-  const next = params.get('next') || '/admin';
   const isLocalDevelopment = process.env.NODE_ENV === 'development';
 
   async function signInWithGoogle() {
@@ -25,7 +24,7 @@ function LoginInner() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${appUrl}/auth/callback?next=${encodeURIComponent(next)}`,
+        redirectTo: `${appUrl}/auth/callback`,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',

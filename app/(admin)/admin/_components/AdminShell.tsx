@@ -150,9 +150,11 @@ export default function AdminShell({
           </div>
 
           <div className="ab-topbar-actions">
-            <Link className="ab-btn primary" href="/admin/leads?new=1">
-              ＋ Tạo Lead mới
-            </Link>
+            {!isLeads && (
+              <Link className="ab-btn primary" href="/admin/leads?new=1">
+                ＋ Tạo Lead mới
+              </Link>
+            )}
 
             <Link
               className="ab-icon-btn"
