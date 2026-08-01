@@ -2,7 +2,7 @@
 // Lớp phòng thủ kép: check ở app (thân thiện) + exclusion constraint ở DB (chắc chắn).
 import 'server-only';
 import { z } from 'zod';
-import { type CommandDef, writeAudit } from './base';
+import { type CommandDef } from './base';
 import { checkAssignment } from '@/lib/core/dispatchConflict.mjs';
 
 const schema = z.object({
@@ -13,27 +13,86 @@ const schema = z.object({
 });
 type Input = z.infer<typeof schema>;
 
+const rpcErrors: Record<string, string> = {
+  ORDER_NOT_FOUND: 'Không tìm thấy đơn hoặc đơn đã bị xóa.',
+  ORDER_NOT_ASSIGNABLE: 'Đơn không còn ở trạng thái Chờ điều xe.',
+  ORDER_INVALID_WINDOW: 'Khung giờ đơn không hợp lệ.',
+  ORDER_ALREADY_ASSIGNED: 'Đơn đã được gán xe và tài xế bởi yêu cầu khác.',
+  VEHICLE_NOT_FOUND: 'Không tìm thấy xe hoặc xe đã bị xóa.',
+  DRIVER_NOT_FOUND: 'Không tìm thấy tài xế hoặc tài xế đã bị xóa.',
+  VEHICLE_MAINTENANCE: 'Xe đang bảo dưỡng, không thể gán.',
+  VEHICLE_INACTIVE: 'Xe đã ngừng hoạt động.',
+  VEHICLE_REGISTRATION_EXPIRED: 'Xe đã hết hạn đăng kiểm.',
+  VEHICLE_INSURANCE_EXPIRED: 'Xe đã hết hạn bảo hiểm.',
+  DRIVER_INACTIVE: 'Tài xế đã ngừng hoạt động.',
+  DRIVER_LICENSE_EXPIRED: 'Bằng lái tài xế đã hết hạn.',
+};
+
+function rpcErrorMessage(error: { code?: string; message?: string }): string {
+  if (error.code === '23505') {
+    return 'Đơn đã được gán xe và tài xế bởi yêu cầu khác.';
+  }
+
+  return rpcErrors[error.message ?? ''] ?? 'Không thể điều phối xe và tài xế.';
+}
+
 export const assignVehicleDriver: CommandDef<Input> = {
   name: 'assign_vehicle_driver',
   permission: 'dispatch.assign',
   schema,
   async run(input, ctx) {
     const org = ctx.auth.organizationId;
-    const { data: order } = await ctx.db.from('orders')
-      .select('*').eq('id', input.orderId).eq('organization_id', org).single();
+    const { data: order, error: orderError } = await ctx.db
+      .from('orders')
+      .select('*')
+      .eq('id', input.orderId)
+      .eq('organization_id', org)
+      .is('deleted_at', null)
+      .maybeSingle();
+
+    if (orderError) {
+      throw new Error('Không thể kiểm tra đơn trước khi điều phối.');
+    }
+
     if (!order) throw new Error('Không tìm thấy đơn');
     if (order.status !== 'WAITING_ASSIGNMENT')
       throw new Error('Chỉ gán được đơn ở trạng thái Chờ điều xe');
 
-    const [{ data: vehicle }, { data: driver }] = await Promise.all([
-      ctx.db.from('vehicles').select('*').eq('id', input.vehicleId).eq('organization_id', org).single(),
-      ctx.db.from('drivers').select('*').eq('id', input.driverId).eq('organization_id', org).single(),
+    const [vehicleResult, driverResult] = await Promise.all([
+      ctx.db
+        .from('vehicles')
+        .select('*')
+        .eq('id', input.vehicleId)
+        .eq('organization_id', org)
+        .is('deleted_at', null)
+        .maybeSingle(),
+      ctx.db
+        .from('drivers')
+        .select('*')
+        .eq('id', input.driverId)
+        .eq('organization_id', org)
+        .is('deleted_at', null)
+        .maybeSingle(),
     ]);
 
+    if (vehicleResult.error || driverResult.error) {
+      throw new Error('Không thể kiểm tra xe hoặc tài xế trước khi điều phối.');
+    }
+
+    const vehicle = vehicleResult.data;
+    const driver = driverResult.data;
+
     // Lịch đang ACTIVE giao nhau khung giờ đơn (chỉ để báo lỗi thân thiện)
-    const { data: existing } = await ctx.db.from('assignments')
+    const { data: existing, error: assignmentsError } = await ctx.db
+      .from('assignments')
       .select('vehicle_id,driver_id,start_time,end_time,order_id')
-      .eq('organization_id', org).eq('status', 'ACTIVE').is('deleted_at', null);
+      .eq('organization_id', org)
+      .eq('status', 'ACTIVE')
+      .is('deleted_at', null);
+
+    if (assignmentsError) {
+      throw new Error('Không thể kiểm tra lịch điều phối hiện tại.');
+    }
 
     const chk = checkAssignment({
       vehicle: vehicle && { status: vehicle.status, registrationExpiry: vehicle.registration_expiry,
@@ -47,26 +106,34 @@ export const assignVehicleDriver: CommandDef<Input> = {
     });
     if (!chk.ok) throw new Error(chk.reason);
 
-    // Ghi assignment — nếu 2 điều phối viên chạy song song, exclusion constraint (23P01)
-    // sẽ chặn cái thứ hai; base.execute map thành lỗi CONFLICT.
-    const { error: aErr } = await ctx.db.from('assignments').insert({
-      organization_id: org, order_id: order.id, vehicle_id: input.vehicleId, driver_id: input.driverId,
-      start_time: order.start_time, end_time: order.end_time, status: 'ACTIVE',
-      created_by: ctx.auth.userId, updated_by: ctx.auth.userId,
-    });
-    if (aErr) throw aErr; // giữ nguyên code (23P01) để base map CONFLICT
+    const { data, error: rpcError } = await ctx.db.rpc(
+      'assign_vehicle_driver_atomic',
+      {
+        p_organization_id: org,
+        p_order_id: order.id,
+        p_vehicle_id: input.vehicleId,
+        p_driver_id: input.driverId,
+        p_actor_id: ctx.auth.userId,
+        p_reason: input.reason ?? null,
+        p_actor_role: ctx.auth.roleKeys[0] ?? null,
+        p_request_id: ctx.requestId,
+      },
+    );
 
-    await ctx.db.from('orders').update({
-      status: 'ASSIGNED', vehicle_id: input.vehicleId, driver_id: input.driverId, updated_by: ctx.auth.userId,
-    }).eq('id', order.id);
+    if (rpcError) {
+      if (rpcError.code === '23P01') {
+        throw rpcError;
+      }
 
-    await ctx.db.from('order_status_history').insert({
-      organization_id: org, order_id: order.id, from_status: order.status, to_status: 'ASSIGNED',
-      reason: input.reason ?? 'Điều phối', created_by: ctx.auth.userId,
-    });
-    await writeAudit(ctx, 'ASSIGN', 'order', order.id,
-      { status: order.status }, { status: 'ASSIGNED', vehicleId: input.vehicleId, driverId: input.driverId });
+      throw new Error(rpcErrorMessage(rpcError));
+    }
 
-    return { orderId: order.id, status: 'ASSIGNED' };
+    const result = Array.isArray(data) ? data[0] : data;
+
+    if (!result?.order_id || !result.status) {
+      throw new Error('Không thể xác nhận kết quả điều phối.');
+    }
+
+    return { orderId: result.order_id, status: result.status };
   },
 };
