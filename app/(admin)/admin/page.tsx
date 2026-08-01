@@ -1,30 +1,106 @@
-// app/(admin)/admin/page.tsx — điểm vào Admin (placeholder Slice 1).
-// Slice 2+ sẽ render dashboard SaaS đầy đủ (tái dùng UI từ web-anbinh-flat/admin).
-import { requireAuth } from '@/lib/auth/session';
-
-export default async function AdminHome() {
-  const ctx = await requireAuth();
+export default function AdminDashboardPage() {
   return (
-    <main style={{ padding: 40, maxWidth: 720, margin: '0 auto' }}>
-      <h1 style={{ fontSize: 22, color: '#17201B' }}>Admin Vận Hành — An Bình</h1>
-      <p style={{ color: '#66736B', fontSize: 14 }}>
-        Đăng nhập thành công với <b>{ctx.email}</b>.
-      </p>
-      <div style={{ background: '#fff', border: '1px solid #E5EAE7', borderRadius: 14, padding: 20, marginTop: 16 }}>
-        <div style={{ fontSize: 13, color: '#66736B' }}>Tổ chức</div>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>{ctx.organizationId}</div>
-        <div style={{ fontSize: 13, color: '#66736B' }}>Vai trò</div>
-        <div style={{ fontWeight: 700, marginBottom: 12 }}>{ctx.roleKeys.join(', ') || '—'}</div>
-        <div style={{ fontSize: 13, color: '#66736B' }}>Số quyền</div>
-        <div style={{ fontWeight: 700 }}>{ctx.permissions.size}</div>
+    <>
+      <div className="ab-h1">Tổng quan vận hành</div>
+
+      <div className="ab-sub">
+        Giao diện Claude Design đang được kết nối với dữ liệu Supabase.
       </div>
-      <form action="/auth/logout" method="post" style={{ marginTop: 20 }}>
-        <button style={{ background: '#fff', border: '1px solid #E5EAE7', borderRadius: 10,
-          padding: '10px 16px', fontWeight: 600, cursor: 'pointer' }}>Đăng xuất</button>
-      </form>
-      <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 24 }}>
-        Slice 1 (Auth + Org + RBAC + RLS). Giao diện SaaS đầy đủ được gắn ở Slice 2+.
-      </p>
-    </main>
+
+      <div className="ab-statrow">
+        <div className="ab-stat">
+          <div className="st-top">
+            <span className="st-label">Tổng doanh thu đã thu</span>
+            <span className="st-ico green">₫</span>
+          </div>
+
+          <div className="st-val">0đ</div>
+          <div className="st-meta">
+            <span className="st-trend flat">14 ngày</span>
+          </div>
+        </div>
+
+        <div className="ab-stat">
+          <div className="st-top">
+            <span className="st-label">Đơn đang hoạt động</span>
+            <span className="st-ico blue">▣</span>
+          </div>
+
+          <div className="st-val">0</div>
+          <div className="st-meta">
+            <span className="st-trend flat">14 ngày</span>
+          </div>
+        </div>
+
+        <div className="ab-stat">
+          <div className="st-top">
+            <span className="st-label">Tổng số đơn hàng</span>
+            <span className="st-ico violet">▤</span>
+          </div>
+
+          <div className="st-val">0</div>
+          <div className="st-meta">
+            <span className="st-trend flat">14 ngày</span>
+          </div>
+        </div>
+
+        <div className="ab-stat">
+          <div className="st-top">
+            <span className="st-label">Lượt truy cập website</span>
+            <span className="st-ico amber">◎</span>
+          </div>
+
+          <div className="st-val">0</div>
+          <div className="st-meta">
+            <span className="st-trend flat">14 ngày</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="ab-dash">
+        <div className="ab-dash-col">
+          <div className="ab-card">
+            <div className="ab-card-hd">
+              <h3>Tổng quan hoạt động</h3>
+            </div>
+
+            <div className="ab-empty">
+              Biểu đồ sẽ hiển thị sau khi nối dữ liệu thật.
+            </div>
+          </div>
+
+          <div className="ab-card">
+            <div className="ab-card-hd">
+              <h3>Chuyến gần nhất</h3>
+            </div>
+
+            <div className="ab-empty">Chưa có đơn nào.</div>
+          </div>
+        </div>
+
+        <div className="ab-dash-col">
+          <div className="ab-card">
+            <h3>Nguồn truy cập</h3>
+            <div className="ab-empty">Chưa có dữ liệu truy cập.</div>
+          </div>
+
+          <div className="ab-card">
+            <h3>Mục tiêu tháng</h3>
+            <div className="ab-empty">Đang chờ dữ liệu thật.</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="ab-card">
+        <div className="ab-card-hd">
+          <h3>Việc cần xử lý ngay</h3>
+          <span className="ab-chip good" style={{ marginLeft: 'auto' }}>
+            0 việc
+          </span>
+        </div>
+
+        <div className="ab-empty">Không có việc tồn đọng.</div>
+      </div>
+    </>
   );
 }
