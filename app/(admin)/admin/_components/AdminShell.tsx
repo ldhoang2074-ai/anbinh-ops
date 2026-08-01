@@ -14,13 +14,13 @@ const navigation = [
   { label: 'Tổng quan', symbol: '▦', href: '/admin' },
   { label: 'Khách hàng & Lead', symbol: '◎', href: '/admin/leads' },
   { label: 'Đơn hàng', symbol: '▤', href: '/admin/orders' },
-  { label: 'Điều phối', symbol: '↝' },
-  { label: 'Xe', symbol: '▣' },
-  { label: 'Tài xế', symbol: '♙' },
-  { label: 'Tài chính', symbol: '₫' },
-  { label: 'Lưu lượng', symbol: '⌁' },
-  { label: 'Nhật ký hệ thống', symbol: '≡' },
-  { label: 'Cấu hình', symbol: '⚙' },
+  { label: 'Điều phối', symbol: '↝', comingSoon: true },
+  { label: 'Xe', symbol: '▣', comingSoon: true },
+  { label: 'Tài xế', symbol: '♙', comingSoon: true },
+  { label: 'Tài chính', symbol: '₫', comingSoon: true },
+  { label: 'Lưu lượng', symbol: '⌁', comingSoon: true },
+  { label: 'Nhật ký hệ thống', symbol: '≡', comingSoon: true },
+  { label: 'Cấu hình', symbol: '⚙', comingSoon: true },
 ];
 
 export default function AdminShell({
@@ -91,18 +91,20 @@ export default function AdminShell({
             }
 
             return (
-              <a
+              <button
                 key={item.label}
-                href="#"
-                title="Màn hình này sẽ được kết nối ở bước tiếp theo"
-                onClick={(event) => event.preventDefault()}
+                type="button"
+                className="coming-soon"
+                aria-disabled="true"
+                title="Tính năng đang được hoàn thiện"
               >
                 <span className="ic" aria-hidden="true">
                   {item.symbol}
                 </span>
 
                 <span className="lb">{item.label}</span>
-              </a>
+                <span className="coming-soon-badge">Đang hoàn thiện</span>
+              </button>
             );
           })}
         </nav>
