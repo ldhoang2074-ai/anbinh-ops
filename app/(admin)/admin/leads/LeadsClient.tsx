@@ -83,6 +83,16 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Đã hủy',
 };
 
+const statusFilters = [
+  { value: 'ALL', label: 'Tất cả' },
+  { value: 'LEAD_NEW', label: 'Lead mới' },
+  { value: 'CONSULTING', label: 'Đang tư vấn' },
+  { value: 'QUOTE_SENT', label: 'Đã gửi báo giá' },
+  { value: 'WAITING_DEPOSIT', label: 'Chờ đặt cọc' },
+  { value: 'CONFIRMED', label: 'Đã xác nhận' },
+  { value: 'CANCELLED', label: 'Đã hủy' },
+];
+
 function getCustomer(lead: LeadRow): CustomerSummary | null {
   if (Array.isArray(lead.customer)) {
     return lead.customer[0] ?? null;
@@ -102,12 +112,6 @@ function dateTime(value: string): string {
   }).format(new Date(value));
 }
 
-function statusClass(status: string): string {
-  if (status === 'CONFIRMED') return 'good';
-  if (status === 'CANCELLED') return 'danger';
-  return 'warn';
-}
-
 export default function LeadsClient({
   openCreateOnLoad,
 }: {
@@ -120,6 +124,7 @@ export default function LeadsClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [modalOpen, setModalOpen] = useState(openCreateOnLoad);
   const [form, setForm] = useState<LeadForm>(emptyForm);
 
@@ -151,12 +156,27 @@ export default function LeadsClient({
     }
   }, [openCreateOnLoad]);
 
+  const leadSummary = useMemo(
+    () => ({
+      total: leads.length,
+      new: leads.filter((lead) => lead.status === 'LEAD_NEW').length,
+      consulting: leads.filter((lead) => lead.status === 'CONSULTING').length,
+      waitingDeposit: leads.filter((lead) => lead.status === 'WAITING_DEPOSIT')
+        .length,
+    }),
+    [leads],
+  );
+
   const filteredLeads = useMemo(() => {
     const keyword = search.trim().toLowerCase();
 
-    if (!keyword) return leads;
-
     return leads.filter((lead) => {
+      if (statusFilter !== 'ALL' && lead.status !== statusFilter) {
+        return false;
+      }
+
+      if (!keyword) return true;
+
       const customer = getCustomer(lead);
 
       return [
@@ -173,7 +193,7 @@ export default function LeadsClient({
         .toLowerCase()
         .includes(keyword);
     });
-  }, [leads, search]);
+  }, [leads, search, statusFilter]);
 
   function closeModal() {
     if (saving) return;
@@ -230,51 +250,97 @@ export default function LeadsClient({
 
   return (
     <>
-      <div className="ab-h1">Khách hàng &amp; Lead</div>
+      <section className="ab-lead-page" aria-labelledby="leads-heading">
+        <header className="ab-lead-header">
+          <div>
+            <p className="ab-lead-eyebrow">Quản lý khách hàng</p>
+            <h1 id="leads-heading" className="ab-h1">
+              Khách hàng &amp; Lead
+            </h1>
+            <p className="ab-sub">
+              Theo dõi khách hàng tiềm năng và tiến trình tư vấn.
+            </p>
+          </div>
 
-      <div className="ab-sub">
-        {leads.length} Lead đang được lưu trong Supabase.
-      </div>
+          <button
+            type="button"
+            className="ab-btn primary ab-lead-create"
+            onClick={() => setModalOpen(true)}
+          >
+            <span aria-hidden="true">＋</span>
+            Tạo Lead mới
+          </button>
+        </header>
 
-      <div className="ab-row between" style={{ marginBottom: 14 }}>
-        <div className="ab-search" style={{ maxWidth: 380 }}>
-          <span aria-hidden="true">⌕</span>
-
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Tìm tên khách, số điện thoại hoặc tuyến..."
-          />
+        <div className="ab-lead-summary" aria-label="Tổng quan Lead">
+          <div className="ab-lead-summary-card">
+            <span>Tổng Lead</span>
+            <strong>{leadSummary.total}</strong>
+          </div>
+          <div className="ab-lead-summary-card">
+            <span>Lead mới</span>
+            <strong>{leadSummary.new}</strong>
+          </div>
+          <div className="ab-lead-summary-card">
+            <span>Đang tư vấn</span>
+            <strong>{leadSummary.consulting}</strong>
+          </div>
+          <div className="ab-lead-summary-card">
+            <span>Chờ đặt cọc</span>
+            <strong>{leadSummary.waitingDeposit}</strong>
+          </div>
         </div>
 
-        <button
-          type="button"
-          className="ab-btn primary"
-          onClick={() => setModalOpen(true)}
-        >
-          ＋ Tạo Lead mới
-        </button>
-      </div>
+        <div className="ab-lead-toolbar">
+          <label className="ab-lead-search">
+            <span className="sr-only">Tìm kiếm Lead</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="6.5" />
+              <path d="m16 16 4 4" />
+            </svg>
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Tìm tên khách, số điện thoại hoặc tuyến..."
+            />
+          </label>
 
-      {error && (
-        <div
-          className="ab-card"
-          style={{
-            borderColor: '#FCA5A5',
-            color: '#B91C1C',
-            marginBottom: 14,
-          }}
-        >
-          {error}
+          <div className="ab-lead-filterbar" aria-label="Lọc trạng thái Lead">
+            {statusFilters.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`ab-lead-filter${
+                  statusFilter === filter.value ? ' on' : ''
+                }`}
+                aria-pressed={statusFilter === filter.value}
+                onClick={() => setStatusFilter(filter.value)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
 
-      <div className="ab-card">
-        {loading ? (
-          <div className="ab-empty">Đang tải dữ liệu Lead…</div>
-        ) : (
-          <div className="ab-table-wrap">
-            <table className="ab-table">
+        {error && (
+          <div className="ab-alert danger ab-lead-alert" role="alert">
+            {error}
+          </div>
+        )}
+
+        <div className="ab-card ab-lead-table-card">
+          <div className="ab-lead-table-head">
+            <div>
+              <h2>Danh sách Lead</h2>
+              <p>{filteredLeads.length} Lead đang hiển thị</p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="ab-empty ab-lead-state">Đang tải dữ liệu Lead…</div>
+          ) : (
+            <div className="ab-table-wrap">
+              <table className="ab-table ab-lead-table">
               <thead>
                 <tr>
                   <th>Khách hàng</th>
@@ -295,22 +361,17 @@ export default function LeadsClient({
 
                     return (
                       <tr key={lead.id}>
-                        <td>
+                        <td className="ab-lead-customer">
                           <b>{customer?.name || 'Không rõ'}</b>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: 'var(--muted)',
-                              marginTop: 3,
-                            }}
-                          >
+                          <div>
                             {customer?.phone || '—'}
                           </div>
                         </td>
 
-                        <td>
-                          {lead.pickup_location || '—'} →{' '}
-                          {lead.dropoff_location || '—'}
+                        <td className="ab-lead-route">
+                          <span>{lead.pickup_location || '—'}</span>
+                          <span aria-hidden="true">→</span>
+                          <span>{lead.dropoff_location || '—'}</span>
                         </td>
 
                         <td>{lead.service_type || '—'}</td>
@@ -319,7 +380,7 @@ export default function LeadsClient({
 
                         <td>
                           <span
-                            className={`ab-chip ${statusClass(lead.status)}`}
+                            className={`ab-badge st-${lead.status}`}
                           >
                             {statusLabels[lead.status] ?? lead.status}
                           </span>
@@ -342,7 +403,7 @@ export default function LeadsClient({
                   <tr>
                     <td colSpan={8}>
                       <div className="ab-empty">
-                        {search
+                        {search || statusFilter !== 'ALL'
                           ? 'Không tìm thấy Lead phù hợp.'
                           : 'Chưa có Lead nào.'}
                       </div>
@@ -350,10 +411,11 @@ export default function LeadsClient({
                   </tr>
                 )}
               </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
 
       {modalOpen && (
         <div

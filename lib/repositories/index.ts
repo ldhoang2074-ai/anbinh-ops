@@ -271,3 +271,19 @@ export const TrafficRepository = {
     return data;
   },
 };
+
+export const DashboardRepository = {
+  async overview() {
+    const [orders, leads, traffic] = await Promise.all([
+      OrderRepository.list(),
+      LeadRepository.list(),
+      TrafficRepository.list(14),
+    ]);
+
+    return {
+      orders: orders ?? [],
+      leads: leads ?? [],
+      traffic: traffic ?? [],
+    };
+  },
+};
