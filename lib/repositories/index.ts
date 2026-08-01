@@ -145,6 +145,53 @@ export const DispatchRepository = {
     }),
 };
 
+function isNotExpired(value: string | null): boolean {
+  return !value || new Date(value).getTime() >= Date.now();
+}
+
+export const VehicleRepository = {
+  async listDispatchable() {
+    const sb = createClient();
+
+    const { data, error } = await sb
+      .from('vehicles')
+      .select('id, plate, model, status, registration_expiry, insurance_expiry')
+      .is('deleted_at', null)
+      .neq('status', 'MAINTENANCE')
+      .neq('status', 'INACTIVE')
+      .order('plate', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []).filter(
+      (vehicle) =>
+        isNotExpired(vehicle.registration_expiry) &&
+        isNotExpired(vehicle.insurance_expiry),
+    );
+  },
+};
+
+export const DriverRepository = {
+  async listDispatchable() {
+    const sb = createClient();
+
+    const { data, error } = await sb
+      .from('drivers')
+      .select('id, name, phone, status, license_expiry')
+      .is('deleted_at', null)
+      .neq('status', 'INACTIVE')
+      .order('name', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? []).filter((driver) => isNotExpired(driver.license_expiry));
+  },
+};
+
 export const QuoteRepository = {
   create: (input: unknown) => runCommand('create_quote', input),
   send: (leadId: string) => runCommand('send_quote', { leadId }),
