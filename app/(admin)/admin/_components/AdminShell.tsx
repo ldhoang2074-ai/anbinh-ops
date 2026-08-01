@@ -13,7 +13,7 @@ type AdminShellProps = {
 const navigation = [
   { label: 'Tổng quan', symbol: '▦', href: '/admin' },
   { label: 'Khách hàng & Lead', symbol: '◎', href: '/admin/leads' },
-  { label: 'Đơn hàng', symbol: '▤' },
+  { label: 'Đơn hàng', symbol: '▤', href: '/admin/orders' },
   { label: 'Điều phối', symbol: '↝' },
   { label: 'Xe', symbol: '▣' },
   { label: 'Tài xế', symbol: '♙' },
@@ -32,7 +32,12 @@ export default function AdminShell({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isLeads = pathname.startsWith('/admin/leads');
-  const title = isLeads ? 'Khách hàng & Lead' : 'Tổng quan';
+  const isOrders = pathname.startsWith('/admin/orders');
+  const title = isLeads
+    ? 'Khách hàng & Lead'
+    : isOrders
+      ? 'Đơn hàng'
+      : 'Tổng quan';
   const avatarLetter = email.trim().charAt(0).toUpperCase() || 'A';
 
   return (

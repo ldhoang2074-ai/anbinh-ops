@@ -34,6 +34,25 @@ const leadSelect = `
   )
 `;
 
+const orderSelect = `
+  *,
+  customer:customers (
+    id,
+    name,
+    phone
+  ),
+  vehicle:vehicles (
+    id,
+    plate,
+    model
+  ),
+  driver:drivers (
+    id,
+    name,
+    phone
+  )
+`;
+
 export const LeadRepository = {
   async list() {
     const sb = createClient();
@@ -79,7 +98,7 @@ export const OrderRepository = {
 
     const { data, error } = await sb
       .from('orders')
-      .select('*')
+      .select(orderSelect)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
 
@@ -95,9 +114,9 @@ export const OrderRepository = {
 
     const { data, error } = await sb
       .from('orders')
-      .select('*')
+      .select(orderSelect)
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       throw error;
